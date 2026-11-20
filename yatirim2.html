@@ -22,6 +22,19 @@ h1{font-size:1.5rem;margin:0 0 14px;letter-spacing:-.01em;display:flex;align-ite
 .dot.ok{background:#22c55e}
 .dot.warn{background:#f59e0b}
 .dot.err{background:#ef4444}
+.srcs{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 6px;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:999px;font-size:.72rem;font-weight:600;color:var(--muted);background:var(--head);white-space:nowrap}
+.chip .ic{width:15px;height:15px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.62rem;line-height:1;font-style:normal;background:var(--muted);color:#0b0f14}
+.chip.on{color:var(--text);border-color:#3b82f6}
+.chip.on .ic{background:#3b82f6;color:#fff}
+.chip.off{border-color:#7f2d2d}
+.chip.off .ic{background:#ef4444;color:#fff}
+.srow{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--line);font-size:.82rem}
+.srow:last-child{border-bottom:0}
+.srow .ic{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-style:normal;flex:none;margin-top:1px;background:var(--muted);color:#0b0f14}
+.srow.on .ic{background:#3b82f6;color:#fff}
+.srow.off .ic{background:#ef4444;color:#fff}
+.srow small{color:var(--muted);display:block;margin-top:2px}
 .msg{font-size:.78rem;color:var(--accent);min-height:1.1em;margin-bottom:8px;font-weight:600}
 .sheet{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,0.05)}
 .grid{min-width:100%;width:100%}
@@ -149,7 +162,7 @@ body{background:radial-gradient(900px 420px at 85% -8%,#12302d 0%,transparent 60
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="brand"><div class="logo">YT</div><div><div class="ttl">Yatırım Takip</div><div class="status"><i class="dot" id="dot"></i><span id="status">Kurlar yükleniyor…</span></div></div></div>
+    <div class="brand"><div class="logo">YT</div><div><div class="ttl">Yatırım Takip</div><div class="status"><i class="dot" id="dot"></i><span id="status">Kurlar yükleniyor…</span></div><div class="srcs" id="srcChips" title="Ayrıntı için tıklayın"></div></div></div>
     <div class="tools">
       <button class="ib" id="suggest" aria-label="Öner"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg><span class="t">Öner</span></button>
       <button class="ib" id="showRates" aria-label="Kurları göster"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg><span class="t">Kurlar</span></button>
@@ -248,20 +261,15 @@ body{background:radial-gradient(900px 420px at 85% -8%,#12302d 0%,transparent 60
 <div class="box" id="boxRates" hidden>
   <div class="boxin" style="max-width:640px">
     <b>Piyasa Kurları & Emtia Fiyatları (Düzenlenebilir)</b>
+    <div id="srcList" style="border:1px solid var(--line);border-radius:8px;margin:10px 0"></div>
     <p id="ratesMeta">Kurları kendi bankanıza, kuyumcunuza veya Kapalıçarşı fiyatlarınıza göre istediğiniz gibi değiştirebilirsiniz.</p>
-    <div style="margin:10px 0;display:flex;align-items:center;gap:8px">
-      <label style="font-size:.8rem;color:var(--muted);font-weight:600">Kur Kaynağı:</label>
-      <select id="rateSource" style="flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font-size:.85rem">
-        <option value="forex">Serbest Piyasa / Forex (Interbank)</option>
-        <option value="kapalicarsi">İstanbul Kapalıçarşı (Fiziki & Primli)</option>
-      </select>
-    </div>
     <div style="max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin:10px 0 14px">
       <table style="width:100%;border-collapse:collapse;font-size:.85rem">
         <thead style="background:var(--head);position:sticky;top:0;z-index:2">
           <tr>
             <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--line)">Varlık / Birim</th>
             <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--line)">Kod</th>
+            <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--line)">Kaynak</th>
             <th style="padding:8px 12px;text-align:right;border-bottom:1px solid var(--line)">Birim Fiyatı (₺ veya $)</th>
           </tr>
         </thead>
@@ -898,8 +906,7 @@ async function loadHistoricalRates() {
 }
 
 // Live Currency Fetching & Rate Sources (Forex / Kapalıçarşı)
-let rateSource = "kapalicarsi";
-try { rateSource = localStorage.getItem("yatirim-rate-source") || "kapalicarsi" } catch(e) {}
+const rateSource = "kapalicarsi"; // yalnızca yedek kaynakta (fawazahmed0) küçük bir kuyumcu farkı uygular
 let lastApiMeta = "Kaynak: Open Exchange Rates (open.er-api.com)";
 
 // ---- Kur kaynakları: her biri kısmi sonuç döner, eksikler sıradaki kaynaktan tamamlanır ----
@@ -907,6 +914,39 @@ const RATE_CACHE_KEY = "yatirim-rates-cache";
 const RATE_FIELDS = ["USD","EUR","GBP","CAD","AUD","CHF","JPY","GRA","CEY","YAR","TAM","XAG","XAU","XAG_USD"];
 const posNum = v => { const x = numLoose(v); return x > 0 ? x : 0; };
 const fmtWhen = d => d.toLocaleString("tr-TR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+
+// 0) CanlıDöviz (resmi olmayan JSON uçları; şema/CORS değişirse sessizce atlanır, sıradaki kaynaklar devreye girer)
+async function srcCanli() {
+  const norm = x => String(x || "").toLowerCase()
+    .replace(/ı/g,"i").replace(/İ/g,"i").replace(/ş/g,"s").replace(/ğ/g,"g")
+    .replace(/ü/g,"u").replace(/ö/g,"o").replace(/ç/g,"c").replace(/[^a-z0-9]+/g," ").trim();
+  const listOf = j => Array.isArray(j) ? j : (j && (j.data || j.items || j.result)) || [];
+  const sellOf = o => {
+    const d = o && o.data ? o.data : o || {};
+    return posNum(d.lastSellPrice ?? d.sellPrice ?? d.selling ?? d.Selling ?? d.sell ?? d.last ?? d.price);
+  };
+  const [cur, gold] = await Promise.all([
+    firstJSON(["https://api.canlidoviz.com/web/items?marketId=1&type=0",
+               "https://api.canlidoviz.com/items/current?marketId=0&code=USD&code=EUR&code=GBP&code=CAD&code=AUD&code=CHF&code=JPY"]),
+    firstJSON(["https://api.canlidoviz.com/web/items?marketId=1&type=1",
+               "https://api.canlidoviz.com/items/latest-data?marketId=0&type=GOLD"]).catch(() => [])
+  ]);
+  const byCode = {}, goldItems = [];
+  listOf(cur).forEach(o => { const c = String(o && (o.code || (o.data && o.data.code)) || "").toUpperCase(); if (c) byCode[c] = o; });
+  listOf(gold).forEach(o => goldItems.push({o, t: norm([o && o.code, o && o.slug, o && o.name, o && o.title].join(" "))}));
+  const g = (...needles) => {
+    const hit = goldItems.find(x => needles.every(n => x.t.includes(n)));
+    return hit ? sellOf(hit.o) : 0;
+  };
+  const c = k => byCode[k] ? sellOf(byCode[k]) : 0;
+  const v = {
+    USD: c("USD"), EUR: c("EUR"), GBP: c("GBP"), CAD: c("CAD"), AUD: c("AUD"), CHF: c("CHF"), JPY: c("JPY"),
+    GRA: g("gram","altin") || g("gram"), CEY: g("ceyrek"), YAR: g("yarim"), TAM: g("tam","altin"),
+    XAG: g("gumus")
+  };
+  if (!v.USD) throw new Error("canlidoviz: beklenen alanlar yok");
+  return {name: "CanlıDöviz", vals: v, ts: ""};
+}
 
 // 1) Truncgil v4 (düz şema: KOD -> {Buying, Selling}); olmazsa diğer host (Rates altında)
 async function srcTruncgil() {
@@ -971,21 +1011,61 @@ async function srcFawaz() {
 
 let ratesBusy = false, lastRatesOkAt = 0;
 
+const SRC_INFO = {
+  "CanlıDöviz": "api.canlidoviz.com",
+  "Truncgil": "finans.truncgil.com",
+  "currency-api-tr": "cdn.jsdelivr.net · TCMB + Truncgil",
+  "fawazahmed0": "cdn.jsdelivr.net · günlük spot"
+};
+let srcState = {}, lastFrom = {}, lastMerged = {};
+const errText = e => {
+  if (e && e.name === "AbortError") return "zaman aşımı (8 sn)";
+  const m = /HTTP (\d+)/.exec(e && e.message || "");
+  if (m) return "sunucu HTTP " + m[1] + " döndürdü";
+  if (e && /beklenen alanlar/.test(e.message || "")) return "yanıt geldi ama beklenen veri yok";
+  return "bağlantı kurulamadı (ağ veya CORS engeli)";
+};
+function srcDetail(n) {
+  const s = srcState[n] || {status: "wait"};
+  if (s.status === "ok") return `Çevrimiçi · ${s.ms} ms · ` + (s.used && s.used.length ? "kullanılan: " + s.used.join(", ") : "yedek olarak hazır (veriler öncelikli kaynaktan alındı)");
+  if (s.status === "fail") return "Ulaşılamadı: " + s.err;
+  if (s.status === "skip") return "Henüz kurulmadı (" + s.msg + ")";
+  return "Kontrol ediliyor…";
+}
+function renderSrcChips() {
+  const names = Object.keys(SRC_INFO);
+  const cls = n => { const s = (srcState[n] || {}).status; return s === "ok" ? "on" : s === "fail" ? "off" : "wait"; };
+  const ic = n => { const s = (srcState[n] || {}).status; return s === "ok" ? "✓" : s === "fail" ? "✕" : s === "skip" ? "–" : "…"; };
+  const a = $("srcChips");
+  if (a) a.innerHTML = names.map(n => `<span class="chip ${cls(n)}" title="${esc(srcDetail(n))}"><i class="ic">${ic(n)}</i>${esc(n)}</span>`).join("");
+  const b = $("srcList");
+  if (b) b.innerHTML = names.map(n => `<div class="srow ${cls(n)}"><i class="ic">${ic(n)}</i><div><b>${esc(n)}</b> <span style="color:var(--muted)">${esc(SRC_INFO[n])}</span><small>${esc(srcDetail(n))}</small></div></div>`).join("");
+}
+function srcFor(k) {
+  const v = rates[k] || 0;
+  if (lastMerged[k] > 0 && Math.abs(v - lastMerged[k]) > 0.005) return '<span style="color:var(--accent)">elle girildi</span>';
+  if (lastFrom[k]) return `<span style="color:#3b82f6">✓</span> ${esc(lastFrom[k].name)}`;
+  if (lastMerged[k] > 0) return '<span style="color:var(--muted)">hesaplandı</span>';
+  return '<span style="color:var(--muted)">' + (v > 0 ? "önbellek / varsayılan" : "—") + "</span>";
+}
+
 async function loadRates(force) {
   if (ratesBusy) return;
   ratesBusy = true;
-  const sourceSel = $("rateSource");
-  if (sourceSel) {
-    rateSource = sourceSel.value;
-    try { localStorage.setItem("yatirim-rate-source", rateSource); } catch(e) {}
-  }
   const st = $("status"), dot = $("dot");
   st.textContent = "Kurlar ve altın fiyatları güncelleniyor…";
   dot.className = "dot";
 
   try {
-    const srcs = [["Truncgil", srcTruncgil], ["currency-api-tr", srcTrApi], ["fawazahmed0", srcFawaz]];
-    const res = await Promise.allSettled(srcs.map(([, f]) => f()));
+    const srcs = [["CanlıDöviz", srcCanli], ["Truncgil", srcTruncgil], ["currency-api-tr", srcTrApi], ["fawazahmed0", srcFawaz]];
+    srcState = {};
+    srcs.forEach(([n]) => { srcState[n] = {status: "wait"}; });
+    renderSrcChips();
+    const t0 = performance.now();
+    const res = await Promise.allSettled(srcs.map(([n, f]) => f().then(
+      r => { srcState[n] = {status: "ok", ms: Math.round(performance.now() - t0), used: []}; renderSrcChips(); return r; },
+      e => { srcState[n] = e && e.skip ? {status: "skip", msg: e.message} : {status: "fail", ms: Math.round(performance.now() - t0), err: errText(e)}; renderSrcChips(); throw e; }
+    )));
 
     const merged = {}, from = {}, diag = [];
     let staleGold = false, approxGold = false, tsShown = "";
@@ -997,6 +1077,7 @@ async function loadRates(force) {
       let took = 0;
       RATE_FIELDS.forEach(f => { if (!merged[f] && vals[f] > 0) { merged[f] = vals[f]; from[f] = {name, stale, approx}; took++; } });
       diag.push(label + (took ? " ✓" : " (kullanılmadı)"));
+      srcState[label].used = RATE_FIELDS.filter(f => from[f] && from[f].name === name);
       if (took && !tsShown && ts) tsShown = ts;
     });
     if (from.GRA) { staleGold = !!from.GRA.stale; approxGold = !!from.GRA.approx; }
@@ -1010,6 +1091,8 @@ async function loadRates(force) {
     }
     if (merged.USD && merged.XAG && !merged.XAG_USD) merged.XAG_USD = merged.XAG * TROY / merged.USD;
 
+    lastFrom = from; lastMerged = {...merged};
+    renderSrcChips();
     const fresh = !!(merged.USD && merged.GRA);
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem(RATE_CACHE_KEY) || "null"); } catch(e) {}
@@ -1023,17 +1106,17 @@ async function loadRates(force) {
       try { localStorage.setItem(RATE_CACHE_KEY, JSON.stringify({ts: now.getTime(), rates: merged, used: usedNames})); } catch(e) {}
       lastRatesOkAt = now.getTime();
       const warn = staleGold ? "altın fiyatı gecikmeli olabilir" : approxGold ? "altın fiyatı günlük spot üzerinden hesaplandı (yaklaşık)" : "";
-      lastApiMeta = `Kaynak: ${usedNames} · ${fmtWhen(now)}${warn ? " · ⚠ " + warn : ""} · Denenen: ${diag.join(", ")}`;
+      lastApiMeta = `Kaynak: ${usedNames} · ${fmtWhen(now)}${warn ? " · ⚠ " + warn : ""}`;
       st.textContent = warn ? `Kurlar güncellendi (${usedNames}) — ${warn}` : `Canlı kurlar güncellendi (${usedNames} · ${fmtWhen(now)})`;
       dot.className = warn ? "dot warn" : "dot ok";
     } else if (cached && cached.rates && cached.rates.USD && cached.rates.GRA) {
       RATE_FIELDS.forEach(f => { if (cached.rates[f] > 0) rates[f] = cached.rates[f]; });
       const when = fmtWhen(new Date(cached.ts));
-      lastApiMeta = `⚠ Canlı kaynaklara ulaşılamadı. Son başarılı değerler (${when}, ${cached.used || "?"}) kullanılıyor · Denenen: ${diag.join(", ")}`;
+      lastApiMeta = `⚠ Canlı kaynaklara ulaşılamadı. Son başarılı değerler (${when}, ${cached.used || "?"}) kullanılıyor`;
       st.textContent = `Canlı kurlar alınamadı — son başarılı değerler kullanılıyor (${when})`;
       dot.className = "dot warn";
     } else {
-      lastApiMeta = `⚠ Hiçbir kaynaktan kur alınamadı; gösterilen değerler eski/tahmini. Kurlar'dan elle girebilirsiniz · Denenen: ${diag.join(", ")}`;
+      lastApiMeta = `⚠ Hiçbir kaynaktan kur alınamadı; gösterilen değerler eski/tahmini. Kurlar'dan elle girebilirsiniz`;
       st.textContent = "Kurlar alınamadı — gösterilen değerler güncel değil. Kurlar bölümünden elle girin.";
       dot.className = "dot err";
     }
@@ -1052,9 +1135,6 @@ document.addEventListener("visibilitychange", () => {
 });
 
 function renderRatesModal() {
-  const sourceSel = $("rateSource");
-  if (sourceSel) sourceSel.value = rateSource;
-
   $("ratesMeta").textContent = lastApiMeta + " — Kurları veya piyasa kaynağını istediğiniz gibi değiştirebilirsiniz:";
   const tbody = $("ratesTable");
   tbody.innerHTML = "";
@@ -1069,6 +1149,7 @@ function renderRatesModal() {
     tr.innerHTML = `
       <td style="padding:8px 12px;font-weight:500">${esc(t.n)}</td>
       <td style="padding:8px 12px;color:var(--muted);font-weight:600">${t.k}</td>
+      <td style="padding:8px 12px;font-size:.74rem;white-space:nowrap">${srcFor(t.k)}</td>
       <td style="padding:4px 8px;text-align:right">
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px">
           <input inputmode="decimal" data-rate-key="${t.k}" value="${priceVal}" style="width:110px;height:32px;padding:4px 8px;text-align:right;font-weight:700;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)">
@@ -1081,17 +1162,9 @@ function renderRatesModal() {
   $("boxRates").hidden = false;
 }
 
-const sourceSelEl = $("rateSource");
-if (sourceSelEl) {
-  sourceSelEl.onchange = async () => {
-    rateSource = sourceSelEl.value;
-    try { localStorage.setItem("yatirim-rate-source", rateSource); } catch(e) {}
-    await loadRates(false);
-    renderRatesModal();
-  };
-}
-
 bind("showRates", renderRatesModal);
+bind("srcChips", renderRatesModal);
+renderSrcChips();
 bind("btnRatesClose", () => { $("boxRates").hidden = true; });
 bind("btnRatesRefresh", async () => { await loadRates(false); renderRatesModal(); });
 bind("btnRatesSave", () => {
