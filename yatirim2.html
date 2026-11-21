@@ -906,41 +906,127 @@ async function loadHistoricalRates() {
 }
 
 // Live Currency Fetching & Rate Sources (Forex / Kapalıçarşı)
-let lastApiMeta = "Kaynak: Truncgil (finans.truncgil.com)";
+const rateSource = "kapalicarsi"; // yalnızca yedek kaynakta (fawazahmed0) küçük bir kuyumcu farkı uygular
+let lastApiMeta = "Kaynak: Open Exchange Rates (open.er-api.com)";
 
 // ---- Kur kaynakları: her biri kısmi sonuç döner, eksikler sıradaki kaynaktan tamamlanır ----
 const RATE_CACHE_KEY = "yatirim-rates-cache";
+// JPY kuru "1 JPY kaç TL" olmalı. Kaynaklar 1 ya da 100 birim üzerinden verebildiği için
+// birimi USD/JPY oranına bakarak bulur (makul aralık 60–400). Hiçbiri uymazsa 0 döner.
+const fixJPY = (j, u) => {
+  if (!(j > 0)) return 0;
+  if (!(u > 0)) return j > 5 ? j / 100 : j;
+  for (const f of [1, 100, 0.01, 10, 0.1, 1000, 0.001]) {
+    const q = u / (j * f);
+    if (q >= 60 && q <= 400) return j * f;
+  }
+  return 0;
+};
 const RATE_FIELDS = ["USD","EUR","GBP","CAD","AUD","CHF","JPY","GRA","CEY","YAR","TAM","XAG","XAU","XAG_USD"];
 const posNum = v => { const x = numLoose(v); return x > 0 ? x : 0; };
 const fmtWhen = d => d.toLocaleString("tr-TR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
 
-// Tek kaynak: Truncgil v4 (düz şema: KOD -> {Buying, Selling})
-async function srcTruncgil() {
-  const j = await fetchJSON("https://finans.truncgil.com/v4/today.json");
-  const d = j && j.Rates ? j.Rates : j;
-  const pick = (...ks) => {
-    for (const k of ks) {
-      const o = d && d[k];
-      if (!o) continue;
-      const v = posNum(o.Selling ?? o.selling ?? o["Satış"]) || posNum(o.Buying ?? o.buying ?? o["Alış"]);
-      if (v) return v;
-    }
-    return 0;
+// 0) CanlıDöviz (resmi olmayan JSON uçları; şema/CORS değişirse sessizce atlanır, sıradaki kaynaklar devreye girer)
+async function srcCanli() {
+  const norm = x => String(x || "").toLowerCase()
+    .replace(/ı/g,"i").replace(/İ/g,"i").replace(/ş/g,"s").replace(/ğ/g,"g")
+    .replace(/ü/g,"u").replace(/ö/g,"o").replace(/ç/g,"c").replace(/[^a-z0-9]+/g," ").trim();
+  const listOf = j => Array.isArray(j) ? j : (j && (j.data || j.items || j.result)) || [];
+  const sellOf = o => {
+    const d = o && o.data ? o.data : o || {};
+    return posNum(d.lastSellPrice ?? d.sellPrice ?? d.selling ?? d.Selling ?? d.sell ?? d.last ?? d.price);
   };
+  const [cur, gold] = await Promise.all([
+    firstJSON(["https://api.canlidoviz.com/web/items?marketId=1&type=0",
+               "https://api.canlidoviz.com/items/current?marketId=0&code=USD&code=EUR&code=GBP&code=CAD&code=AUD&code=CHF&code=JPY"]),
+    firstJSON(["https://api.canlidoviz.com/web/items?marketId=1&type=1",
+               "https://api.canlidoviz.com/items/latest-data?marketId=0&type=GOLD"]).catch(() => [])
+  ]);
+  const byCode = {}, goldItems = [];
+  listOf(cur).forEach(o => { const c = String(o && (o.code || (o.data && o.data.code)) || "").toUpperCase(); if (c) byCode[c] = o; });
+  listOf(gold).forEach(o => goldItems.push({o, t: norm([o && o.code, o && o.slug, o && o.name, o && o.title].join(" "))}));
+  const g = (...needles) => {
+    const hit = goldItems.find(x => needles.every(n => x.t.includes(n)));
+    return hit ? sellOf(hit.o) : 0;
+  };
+  const c = k => byCode[k] ? sellOf(byCode[k]) : 0;
   const v = {
-    USD: pick("USD"), EUR: pick("EUR"), GBP: pick("GBP"), CAD: pick("CAD"), AUD: pick("AUD"), CHF: pick("CHF"), JPY: pick("JPY"),
-    GRA: pick("GRA", "gram-altin"), CEY: pick("CEYREKALTIN", "ceyrek-altin"),
-    YAR: pick("YARIMALTIN", "yarim-altin"), TAM: pick("TAMALTIN", "tam-altin"),
-    XAG: pick("GUMUS", "GÜMÜŞ", "XAG", "gumus")
+    USD: c("USD"), EUR: c("EUR"), GBP: c("GBP"), CAD: c("CAD"), AUD: c("AUD"), CHF: c("CHF"), JPY: c("JPY"),
+    GRA: g("gram","altin") || g("gram"), CEY: g("ceyrek"), YAR: g("yarim"), TAM: g("tam","altin"),
+    XAG: g("gumus")
+  };
+  if (!v.USD) throw new Error("canlidoviz: beklenen alanlar yok");
+  return {name: "CanlıDöviz", vals: v, ts: ""};
+}
+
+// 1) Truncgil v4 (düz şema: KOD -> {Buying, Selling}); olmazsa diğer host (Rates altında)
+async function srcTruncgil() {
+  let lastErr;
+  for (const u of ["https://finans.truncgil.com/v4/today.json", "https://finance.truncgil.com/api/today.json"]) {
+    try {
+      const j = await fetchJSON(u);
+      const d = j && j.Rates ? j.Rates : j;
+      const pick = (...ks) => {
+        for (const k of ks) { const o = d[k]; if (o) { const v = posNum(o.Selling ?? o["Satış"]); if (v) return v; } }
+        return 0;
+      };
+      const v = {
+        USD: pick("USD"), EUR: pick("EUR"), GBP: pick("GBP"), CAD: pick("CAD"), AUD: pick("AUD"), CHF: pick("CHF"), JPY: pick("JPY"),
+        GRA: pick("GRA", "gram-altin"), CEY: pick("CEYREKALTIN", "ceyrek-altin"),
+        YAR: pick("YARIMALTIN", "yarim-altin"), TAM: pick("TAMALTIN", "tam-altin"),
+        XAG: pick("GUMUS", "GÜMÜŞ", "XAG", "gumus")
+      };
+      if (!v.USD || !v.GRA) throw new Error("beklenen alanlar yok");
+      return {name: "Truncgil", vals: v, ts: d.Update_Date || (j && j.Update_Date) || ""};
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("Truncgil");
+}
+
+// 2) currency-api-tr: TCMB + Truncgil'i 5 dk'da bir toplayan statik JSON (CDN, CORS açık)
+async function srcTrApi() {
+  const d = await firstJSON([
+    "https://cdn.jsdelivr.net/gh/MehmetAkgul/currency-api-tr@main/v1/currencies/try-full.json",
+    "https://raw.githubusercontent.com/MehmetAkgul/currency-api-tr/main/v1/currencies/try-full.json"
+  ]);
+  const t = d && d.try ? d.try : {};
+  const ask = k => t[k] ? posNum(t[k].ask) : 0;
+  const v = {
+    USD: ask("usd"), EUR: ask("eur"), GBP: ask("gbp"), CAD: ask("cad"), AUD: ask("aud"), CHF: ask("chf"), JPY: ask("jpy"),
+    GRA: ask("xau_gram"), CEY: ask("xau_ceyrek"), YAR: ask("xau_yarim"), TAM: ask("xau_tam"), XAG: ask("xag_gram")
   };
   if (!v.USD || !v.GRA) throw new Error("beklenen alanlar yok");
-  return {name: "Truncgil", vals: v, ts: (d && d.Update_Date) || (j && j.Update_Date) || ""};
+  return {name: "currency-api-tr", vals: v, ts: d.updated_at || d.date || "", stale: !!d.is_stale};
+}
+
+// 3) fawazahmed0: günlük spot (altın/gümüş dahil), limitsiz; son çare
+async function srcFawaz() {
+  const d = await firstJSON([
+    "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/try.min.json",
+    "https://latest.currency-api.pages.dev/v1/currencies/try.min.json",
+    "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/try.json",
+    "https://latest.currency-api.pages.dev/v1/currencies/try.json"
+  ]);
+  const t = d && d.try ? d.try : {};
+  const inv = k => t[k] > 0 ? 1 / t[k] : 0;
+  const usd = inv("usd");
+  if (!usd) throw new Error("beklenen alanlar yok");
+  const prem = rateSource === "kapalicarsi" ? 1.018 : 1;
+  const gra = inv("xau") ? inv("xau") / TROY * prem : 0;
+  const v = {
+    USD: usd, EUR: inv("eur"), GBP: inv("gbp"), CAD: inv("cad"), AUD: inv("aud"), CHF: inv("chf"), JPY: inv("jpy"),
+    GRA: gra, XAG: inv("xag") ? inv("xag") / TROY * prem : 0
+  };
+  return {name: "fawazahmed0 (günlük)", vals: v, ts: d.date || "", approx: true};
 }
 
 let ratesBusy = false, lastRatesOkAt = 0;
 
 const SRC_INFO = {
-  "Truncgil": "finans.truncgil.com/v4/today.json"
+  "CanlıDöviz": "api.canlidoviz.com",
+  "Truncgil": "finans.truncgil.com",
+  "currency-api-tr": "cdn.jsdelivr.net · TCMB + Truncgil",
+  "fawazahmed0": "cdn.jsdelivr.net · günlük spot"
 };
 let srcState = {}, lastFrom = {}, lastMerged = {};
 const errText = e => {
@@ -982,7 +1068,7 @@ async function loadRates(force) {
   dot.className = "dot";
 
   try {
-    const srcs = [["Truncgil", srcTruncgil]];
+    const srcs = [["CanlıDöviz", srcCanli], ["Truncgil", srcTruncgil], ["currency-api-tr", srcTrApi], ["fawazahmed0", srcFawaz]];
     srcState = {};
     srcs.forEach(([n]) => { srcState[n] = {status: "wait"}; });
     renderSrcChips();
@@ -998,7 +1084,11 @@ async function loadRates(force) {
       const label = srcs[i][0];
       if (r.status !== "fulfilled") { diag.push(label + " ✗"); return; }
       const {name, vals, ts, stale, approx} = r.value;
-      if (vals.JPY > 5) vals.JPY = vals.JPY / 100; // 100 JPY verilirse 1 JPY'ye çevir
+      if (vals.JPY > 0) {
+        const fj = fixJPY(vals.JPY, vals.USD || merged.USD);
+        if (!fj) diag.push(label + " JPY değeri tutarsız, atlandı");
+        vals.JPY = fj;
+      }
       let took = 0;
       RATE_FIELDS.forEach(f => { if (!merged[f] && vals[f] > 0) { merged[f] = vals[f]; from[f] = {name, stale, approx}; took++; } });
       diag.push(label + (took ? " ✓" : " (kullanılmadı)"));
@@ -1026,6 +1116,7 @@ async function loadRates(force) {
 
     if (fresh) {
       RATE_FIELDS.forEach(f => { if (merged[f] > 0) rates[f] = merged[f]; });
+      { const fj = fixJPY(rates.JPY, rates.USD); if (fj) rates.JPY = fj; }
       // gümüş hiçbir kaynaktan gelmediyse önbellekten tamamla
       if (!merged.XAG && cached && cached.rates && cached.rates.XAG) { rates.XAG = cached.rates.XAG; rates.XAG_USD = cached.rates.XAG_USD || rates.XAG_USD; }
       try { localStorage.setItem(RATE_CACHE_KEY, JSON.stringify({ts: now.getTime(), rates: merged, used: usedNames})); } catch(e) {}
@@ -1036,6 +1127,7 @@ async function loadRates(force) {
       dot.className = warn ? "dot warn" : "dot ok";
     } else if (cached && cached.rates && cached.rates.USD && cached.rates.GRA) {
       RATE_FIELDS.forEach(f => { if (cached.rates[f] > 0) rates[f] = cached.rates[f]; });
+      { const fj = fixJPY(rates.JPY, rates.USD); if (fj) rates.JPY = fj; }
       const when = fmtWhen(new Date(cached.ts));
       lastApiMeta = `⚠ Canlı kaynaklara ulaşılamadı. Son başarılı değerler (${when}, ${cached.used || "?"}) kullanılıyor`;
       st.textContent = `Canlı kurlar alınamadı — son başarılı değerler kullanılıyor (${when})`;
@@ -1067,7 +1159,7 @@ function renderRatesModal() {
     if (t.k === "TRY" || t.k === "CUS") return;
     const isUSD = t.k === "XAU" || t.k === "XAG_USD";
     const val = rates[t.k] || 0;
-    const priceVal = (Math.round(val * (val < 1 ? 10000 : 100)) / (val < 1 ? 10000 : 100)).toString().replace(".", ",");
+    const priceVal = (Math.round(val * 100) / 100).toString().replace(".", ",");
 
     const tr = document.createElement("tr");
     tr.style.borderBottom = "1px solid var(--line)";
