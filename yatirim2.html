@@ -287,8 +287,9 @@ body{background:radial-gradient(900px 420px at 85% -8%,#12302d 0%,transparent 60
 <div class="box" id="boxSettings" hidden>
   <div class="boxin" style="max-width:440px">
     <b>Ayarlar</b>
-    <div class="setrow"><div><b>Yedekle</b><p>Tüm verilerinizi JSON dosyası olarak indirir.</p></div><button class="btn primary" id="save">Kaydet</button></div>
+    <div class="setrow"><div><b>Yedekle</b><p>Dosya yöneticisi / paylaş menüsü açılır; Google Drive'ı seçip kaydedin.</p></div><button class="btn primary" id="save">Kaydet</button></div>
     <div class="setrow"><div><b>Yedeği yükle</b><p>Daha önce aldığınız JSON dosyasını geri yükler.</p></div><button class="btn" id="load">Yükle</button></div>
+    <div class="setrow" style="display:block"><b>Sürüm <span id="verNo"></span></b><p id="verDate"></p><div id="verLog" style="font-size:12px;margin-top:6px;opacity:.85"></div></div>
     <div class="actions"><button class="btn" id="btnSetClose">Kapat</button></div>
   </div>
 </div>
@@ -362,6 +363,13 @@ body{background:radial-gradient(900px 420px at 85% -8%,#12302d 0%,transparent 60
 </div>
 
 <script>
+/* SÜRÜM BİLGİSİ — her değişiklikte güncelleyin (yeni kayıt en üste) */
+const APP_VERSION = "1.1.0";
+const APP_BUILD = "2026-11-23";
+const CHANGELOG = [
+  {v: "1.1.0", d: "2026-11-23", n: "Yedek al: dosya yöneticisi / paylaş menüsü (Drive seçilebilir), sürüm bilgisi eklendi"},
+  {v: "1.0.0", d: "2026-11-23", n: "İlk sürüm (indir + yükle ile JSON yedek)"}
+];
 const TYPES = [
   {k:"GRA", n:"Gram Altın (₺)"},
   {k:"CEY", n:"Çeyrek Altın (₺)"},
@@ -707,6 +715,8 @@ function buildJSON() {
   return JSON.stringify({
     uygulama: "yatirim-ve-varlik-takip",
     surum: 1,
+    uygulamaSurumu: APP_VERSION,
+    uygulamaTarihi: APP_BUILD,
     kayitTarihi: new Date().toISOString(),
     satirlar: rows.map(r => ({
       aciklama: r.note || "",
@@ -789,12 +799,39 @@ function loadJSONText(text) {
   }
 }
 
-bind("save", () => {
+bind("save", async () => {
   const json = buildJSON();
   const fname = "yatirim-" + new Date().toISOString().slice(0, 10) + ".json";
+  const blob = new Blob([json], { type: "application/json" });
 
+  // 1) Masaüstü Chrome/Edge: "Farklı kaydet" penceresi (Drive for desktop varsa Drive da görünür)
+  if (window.showSaveFilePicker) {
+    try {
+      const h = await showSaveFilePicker({ suggestedName: fname, types: [{ description: "JSON yedek", accept: { "application/json": [".json"] } }] });
+      const w = await h.createWritable();
+      await w.write(blob);
+      await w.close();
+      say("Yedek kaydedildi: " + h.name);
+      return;
+    } catch(e) {
+      if (e && e.name === "AbortError") { say("Yedekleme iptal edildi."); return; }
+    }
+  }
+
+  // 2) Telefon: paylaş menüsü (Drive'a Kaydet seçeneği çıkar)
   try {
-    const blob = new Blob([json], { type: "application/json" });
+    const file = new File([blob], fname, { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: "Yatırım yedeği" });
+      say("Yedek paylaşıldı: " + fname);
+      return;
+    }
+  } catch(e) {
+    if (e && e.name === "AbortError") { say("Yedekleme iptal edildi."); return; }
+  }
+
+  // 3) Son çare: normal indirme
+  try {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1195,7 +1232,12 @@ function showTab(t) {
 }
 bind("tabOpen", () => showTab("open"));
 bind("tabClosed", () => showTab("closed"));
-bind("openSettings", () => { $("boxSettings").hidden = false; });
+bind("openSettings", () => {
+  $("verNo").textContent = "v" + APP_VERSION;
+  $("verDate").textContent = "Son güncelleme: " + APP_BUILD;
+  $("verLog").innerHTML = CHANGELOG.map(c => "<div>v" + c.v + " · " + c.d + " — " + c.n + "</div>").join("");
+  $("boxSettings").hidden = false;
+});
 bind("btnSetClose", () => { $("boxSettings").hidden = true; });
 ["save", "load"].forEach(id => $(id).addEventListener("click", () => { $("boxSettings").hidden = true; }));
 updTabs();
