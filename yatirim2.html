@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!--
+  ÇALIŞMA KURALI (Claude için): Bu dosyada yapılan HER değişiklikte
+  APP_VERSION, APP_BUILD ve CHANGELOG (en üste yeni satır) güncellenir.
+  Küçük düzeltme: 1.1.0 -> 1.1.1 | Yeni özellik: 1.1.0 -> 1.2.0 | Büyük değişiklik: 2.0.0
+  Dosya sürümü Ayarlar ekranında görünür; ayrıca yedek JSON'una yazılır.
+  Kaynak: https://raw.githubusercontent.com/cyalcin-1965/gnl/main/yatirim2.html
+-->
 <html lang="tr">
 <head>
 <meta charset="utf-8">
@@ -364,9 +371,10 @@ body{background:radial-gradient(900px 420px at 85% -8%,#12302d 0%,transparent 60
 
 <script>
 /* SÜRÜM BİLGİSİ — her değişiklikte güncelleyin (yeni kayıt en üste) */
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.1.1";
 const APP_BUILD = "2026-11-23";
 const CHANGELOG = [
+  {v: "1.1.1", d: "2026-11-23", n: "Dosya başına sürüm güncelleme kuralı (yorum) eklendi"},
   {v: "1.1.0", d: "2026-11-23", n: "Yedek al: dosya yöneticisi / paylaş menüsü (Drive seçilebilir), sürüm bilgisi eklendi"},
   {v: "1.0.0", d: "2026-11-23", n: "İlk sürüm (indir + yükle ile JSON yedek)"}
 ];
